@@ -1,58 +1,84 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Trading Bot Dashboard
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+A Laravel dashboard for monitoring (and, later, sending control requests to) an ICT trading engine written in Python that trades through MT5.
 
-## About Laravel
+> **Status:** early scaffold. The Laravel app is freshly installed; the dashboard itself is not built yet. The full design lives in [08-Laravel-Dashboard-Reference.md](08-Laravel-Dashboard-Reference.md).
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## How it fits together
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+Two separate apps share one database contract. They never import each other.
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
-
-## Learning Laravel
-
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
-
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
-
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
-
-## Agentic Development
-
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
-
-```bash
-composer require laravel/boost --dev
-
-php artisan boost:install
+```
+ Windows VPS                          Managed DB                  Web server
+ ┌──────────────────────┐        ┌────────────────┐        ┌─────────────────┐
+ │ MT5 + Python engine  │─write─▶│  MySQL /       │◀─read──│ Laravel         │
+ │                      │◀─poll──│  PostgreSQL    │─write─▶│  (this project) │
+ └──────────────────────┘commands└────────────────┘commands└─────────────────┘
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+- **Python owns trading.** Laravel can only *request* actions (pause, resume, stop, close all); it never places orders or overrides risk limits.
+- **No inbound ports on the trading machine.** The engine polls the `commands` table.
+- **Laravel owns the schema** via migrations. Python reads and inserts against those tables.
 
-## Contributing
+## Planned features
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+| Page | Shows |
+|---|---|
+| Overview | Balance, equity, today's PnL, open trades, engine status |
+| Trades | Filterable trade table with linked setup |
+| Setups | Detected ICT structures and ML scores |
+| Performance | Equity curve, drawdown, win rate, profit factor |
+| Daily journal | LLM analysis per day |
+| Controls | Pause / resume / emergency stop and command history |
+| Settings | Soft risk parameters (validated by the engine) |
+| Logs | Engine errors and events |
 
-## Code of Conduct
+Alerts (engine offline, critical errors, daily digest) run as scheduled jobs through the queue.
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+## Build order
 
-## Security Vulnerabilities
+1. Migrations for the shared tables
+2. Python writer that inserts sample data into a dev database
+3. Read-only pages: Overview, Trades, Setups, Performance
+4. Heartbeat and engine-status indicator
+5. Command table, Python poller, Controls page
+6. Alerts and daily digest
+7. Hardening: roles, 2FA, audit log, backups
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+Steps 1-4 come before any control features; a read-only dashboard is already useful and carries no risk.
+
+## Learning goals
+
+This project is also a vehicle for learning new Laravel concepts: Socialite (OAuth login), Sanctum API tokens, JWT, policies and roles, 2FA, queues and notifications, broadcasting, and Pest tests. The mapping of concept to feature is in section 10 of the [reference](08-Laravel-Dashboard-Reference.md).
+
+## Conventions
+
+- Money and prices use `DECIMAL(18,5)` or higher, never floats.
+- All timestamps are stored in UTC and converted only for display.
+- Engine-written rows carry a unique `external_id` so retries don't duplicate.
+- Trading records are never hard-deleted.
+- Broker credentials exist only on the engine machine, never in Laravel or the database.
+
+## Local setup
+
+Requires PHP and Composer.
+
+```bash
+composer install
+cp .env.example .env
+php artisan key:generate
+php artisan migrate
+npm install && npm run dev
+php artisan serve
+```
+
+Configure the database connection in `.env`. Use a dedicated DB user for Laravel with write access limited to `commands` and `settings`.
+
+## Documentation
+
+- [08-Laravel-Dashboard-Reference.md](08-Laravel-Dashboard-Reference.md): architecture, database contract, command protocol, security checklist, build order.
+- [AGENTS.md](AGENTS.md) / [CLAUDE.md](CLAUDE.md): guidelines for AI coding agents (Laravel Boost).
 
 ## License
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+Built on Laravel, which is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
