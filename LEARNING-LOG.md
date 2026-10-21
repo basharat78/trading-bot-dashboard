@@ -43,3 +43,11 @@ A running record of what was built, which packages were installed, what each pie
 - **Migration:** `php artisan migrate` ran `add_role_to_users_table` as batch 2 on MySQL.
 - **Concepts:** Pest `it('...', fn)` and `expect(...)->toBeTrue()`; model factories with overrides; tests run on in-memory SQLite, so they pass even if MySQL was never migrated. Always run `migrate` too.
 - **Open item:** `down()` in the role migration still calls `Schema::dropIfExists('role')`; it should be `$table->dropColumn('role')`. Verify with `php artisan migrate:rollback` then `migrate` (safe now, no real data).
+
+## 5. First shared table: heartbeats
+
+- **Command:** `php artisan make:model Heartbeat -m` creates the model and its migration; `php artisan migrate` ran it (batch 3).
+- **Columns:** `id` (BIGINT UNSIGNED PK), `engine_id` (VARCHAR 64, indexed), `beat_at` (TIMESTAMP, indexed, UTC), `status` (VARCHAR 20), `version` (VARCHAR 32), `open_positions` (SMALLINT UNSIGNED, default 0), `timestamps()`.
+- **Why:** the engine inserts a row every few seconds; the dashboard shows "offline" if the latest `beat_at` is too old. Indexes keep "latest beat per engine" fast as rows pile up. Columns are NOT NULL so bad rows are rejected by the database.
+- **Concepts:** column types and lengths, `->index()`, NOT NULL vs nullable, app timezone stays UTC. Heartbeats are not trading records, so old rows may be pruned by a scheduled job later.
+- **Open item:** `Heartbeat` model is still empty; it needs `#[Fillable]` and a `beat_at` datetime cast.
